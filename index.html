@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body class="is-locked">
 
@@ -115,6 +115,29 @@
     <h2 class="card-title">🏆 장·중·단기 3포켓 수익률 비교</h2>
     <p class="hint">모의계좌 1개 안에서 각 300만 원씩 나누어 세 전략을 동시에 굴린 기록입니다.</p>
     <div id="pockets-list" class="pocket-list"></div>
+  </section>
+
+  <!-- ───────────────── 빗썸 보유 자산 ───────────────── -->
+  <section id="card-bithumb" class="card data-card" hidden>
+    <div class="card-head">
+      <h2 class="card-title">🪙 빗썸 보유 자산</h2>
+      <span id="bithumb-updated" class="stamp">-</span>
+    </div>
+    <div class="money-grid">
+      <div class="money">
+        <div class="money-label">총 평가금액</div>
+        <div id="bithumb-total" class="money-value">-</div>
+      </div>
+      <div class="money">
+        <div class="money-label">보유 원화</div>
+        <div id="bithumb-krw" class="money-value">-</div>
+      </div>
+      <div class="money">
+        <div class="money-label">포인트</div>
+        <div id="bithumb-point" class="money-value">-</div>
+      </div>
+    </div>
+    <div id="bithumb-list" class="holding-list"></div>
   </section>
 
   <!-- ───────────────── 보유 종목 ───────────────── -->

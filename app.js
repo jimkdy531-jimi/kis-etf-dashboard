@@ -265,6 +265,18 @@
       });
   }
 
+  function fetchBithumb() {
+    return gh('/repos/' + OWNER + '/' + REPO + '/contents/data/bithumb.json?ref=' + BRANCH)
+      .then(function (res) {
+        if (!res.ok) return null;
+        return res.json().then(function (json) {
+          var text = decodeBase64Utf8(json && json.content);
+          return text ? JSON.parse(text) : null;
+        });
+      })
+      .catch(function () { return null; });
+  }
+
   function fetchRuns() {
     return gh('/repos/' + OWNER + '/' + REPO + '/actions/runs?per_page=5&branch=' + BRANCH)
       .then(function (res) {
@@ -327,6 +339,7 @@
   // ===========================================================================
   var state = {
     status: null,
+    bithumb: null,
     statusNotFound: false,
     runs: [],
     vars: {},
@@ -399,6 +412,16 @@
   function startDemo() {
     state.demo = true;
     state.status = JSON.parse(JSON.stringify(DEMO_STATUS));
+    state.bithumb = {
+      updated_at: '2026-11-25 17:04 KST (예시)',
+      total_eval: 8818364,
+      krw: 130,
+      point: 13,
+      coins: [
+        { currency: 'XRP', qty: 6684, avg: 3163, price: 1248, eval: 8341632 },
+        { currency: 'USDT', qty: 339.9, avg: 1475, price: 1361, eval: 462603 }
+      ]
+    };
     state.runs = DEMO_RUNS.map(function (r, i) {
       r.html_url = ACTIONS_URL;  // 데모에서는 링크도 실제 저장소로
       return r;
@@ -409,6 +432,7 @@
     document.body.classList.remove('is-locked');
     renderSummary();
     renderPockets();
+    renderBithumb();
     renderHoldings();
     renderOrders();
     renderRules();
@@ -589,14 +613,55 @@
       return '<div class="pocket-item">' +
         '<div class="pocket-head">' +
           '<div>' +
-            '<div class="pocket-name">' + esc(p.name) + '</div>' +
-            '<div class="pocket-cycle">' + esc(p.cycle || '') + ' · ' + esc(dateText) + '</div>' +
+            '<div class="pocket-name">' + escapeHtml(p.name) + '</div>' +
+            '<div class="pocket-cycle">' + escapeHtml(p.cycle || '') + ' · ' + escapeHtml(dateText) + '</div>' +
           '</div>' +
-          '<div class="pocket-ret ' + retCls + '">' + esc(retText) + '</div>' +
+          '<div class="pocket-ret ' + retCls + '">' + escapeHtml(retText) + '</div>' +
         '</div>' +
-        '<div class="pocket-eval">평가 <strong>' + esc(won(p.eval_krw)) + '</strong> · 원금 ' + esc(won(p.capital_krw)) + '</div>' +
-        '<div class="pocket-hold">보유: ' + esc(p.holdings_text || '현금 대기') + '</div>' +
-        '<div class="pocket-reason">' + esc(p.signal_reason || '') + '</div>' +
+        '<div class="pocket-eval">평가 <strong>' + escapeHtml(fmtWon(p.eval_krw)) + '</strong> · 원금 ' + escapeHtml(fmtWon(p.capital_krw)) + '</div>' +
+        '<div class="pocket-hold">보유: ' + escapeHtml(p.holdings_text || '현금 대기') + '</div>' +
+        '<div class="pocket-reason">' + escapeHtml(p.signal_reason || '') + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderBithumb() {
+    var card = $('card-bithumb');
+    var list = $('bithumb-list');
+    if (!card || !list) return;
+    var b = state.bithumb;
+    if (!b || !Array.isArray(b.coins)) {
+      card.hidden = true;
+      list.innerHTML = '';
+      return;
+    }
+    card.hidden = false;
+    setText('bithumb-updated', b.updated_at || '-');
+    setText('bithumb-total', fmtWon(b.total_eval));
+    setText('bithumb-krw', fmtWon(b.krw));
+    setText('bithumb-point', Math.round(toNumber(b.point)).toLocaleString('ko-KR') + ' P');
+    list.innerHTML = b.coins.map(function (c) {
+      var price = toNumber(c.price);
+      var avg = toNumber(c.avg);
+      var ret = avg > 0 ? ((price - avg) / avg) * 100 : 0;
+      var retCls = ret > 0 ? 'pos' : (ret < 0 ? 'neg' : '');
+      var retText = avg > 0 ? ((ret > 0 ? '+' : '') + ret.toFixed(1) + '%') : '-';
+      var qtyStr = toNumber(c.qty) >= 100
+        ? Math.round(toNumber(c.qty)).toLocaleString('ko-KR')
+        : toNumber(c.qty).toFixed(2);
+      return '<div class="holding">' +
+        '<div class="holding-top">' +
+          '<div>' +
+            '<span class="holding-name">' + escapeHtml(c.currency) + '</span>' +
+            '<span class="holding-code">' + escapeHtml(qtyStr) + '개</span>' +
+          '</div>' +
+          '<span class="pocket-ret ' + retCls + '">' + escapeHtml(retText) + '</span>' +
+        '</div>' +
+        '<div class="holding-meta">' +
+          '<span>평가 <strong>' + escapeHtml(fmtWon(c.eval)) + '</strong></span>' +
+          '<span>현재가 ' + escapeHtml(price.toLocaleString('ko-KR')) + '원</span>' +
+          '<span>평단 ' + escapeHtml(avg.toLocaleString('ko-KR')) + '원</span>' +
+        '</div>' +
       '</div>';
     }).join('');
   }
@@ -850,6 +915,7 @@
       : '');
     renderSummary();
     renderPockets();
+    renderBithumb();
     renderHoldings();
     renderOrders();
     renderRules();
@@ -876,11 +942,13 @@
     return Promise.all([
       fetchStatus().catch(function (err) { return { error: err }; }),
       fetchRuns().catch(function () { return []; }),
-      fetchVariables().catch(function () { return { vars: {}, readable: false }; })
+      fetchVariables().catch(function () { return { vars: {}, readable: false }; }),
+      fetchBithumb()
     ]).then(function (results) {
       var statusResult = results[0];
       var runs = results[1];
       var varResult = results[2];
+      state.bithumb = results[3] || state.bithumb;
 
       state.runs = runs;
       if (varResult && varResult.readable !== undefined) {
@@ -892,6 +960,7 @@
         var cached = readCache();
         if (cached && cached.status) {
           state.status = cached.status;
+          state.bithumb = cached.bithumb || state.bithumb;
           state.cachedAt = cached.at || null;
           renderAll();
         } else {
@@ -913,7 +982,7 @@
       state.cachedAt = null;
       if (statusResult && statusResult.status) {
         state.status = statusResult.status;
-        writeCache({ status: state.status, runs: state.runs, vars: state.vars, varsReadable: state.varsReadable, at: Date.now() });
+        writeCache({ status: state.status, bithumb: state.bithumb, runs: state.runs, vars: state.vars, varsReadable: state.varsReadable, at: Date.now() });
         var hintOk = $('connect-hint');
         if (hintOk) { hintOk.className = 'hint'; hintOk.textContent = '연결됨 · 토큰 ' + maskToken(getToken()) + ' 로 읽고 있습니다.'; }
         renderAll();
