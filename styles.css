@@ -300,9 +300,9 @@ a { color: var(--primary); }
 .run-dot.bad { background: var(--danger); }
 .run-dot.live { background: var(--primary); animation: pulse 1.4s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-.run-main { flex: 1; min-width: 0; }
-.run-title { font-size: 16px; font-weight: 800; }
-.run-sub { font-size: 14px; color: var(--muted); }
+.run-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.run-title { display: block; font-size: 16px; font-weight: 800; }
+.run-sub { display: block; font-size: 14px; color: var(--muted); }
 .run-go { font-size: 22px; color: var(--muted); }
 
 /* ── 푸터 ─────────────────────────────────────────────── */

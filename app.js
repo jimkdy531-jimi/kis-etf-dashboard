@@ -720,6 +720,10 @@
 
     var weights = buildWeightChartData(state.status && state.status.holdings);
     if (weights.labels.length) {
+      var maxShare = 0;
+      weights.target.concat(weights.current).forEach(function (v) { if (v > maxShare) maxShare = v; });
+      // 100% 고정 눈금은 막대를 지나치게 짧게 만든다. 실제 값에 맞춰 눈금을 줄인다(최대 100%).
+      var axisMax = Math.min(100, Math.max(50, Math.ceil((maxShare * 1.25) / 10) * 10));
       var wCanvas = chartGuard('chart-weights', '');
       if (wCanvas) {
         if (state.charts.weights) state.charts.weights.destroy();
@@ -738,7 +742,7 @@
             maintainAspectRatio: false,
             animation: false,
             scales: {
-              x: { beginAtZero: true, max: 100, grid: { color: '#e8edf7' }, ticks: { callback: function (v) { return v + '%'; } } },
+              x: { beginAtZero: true, max: axisMax, grid: { color: '#e8edf7' }, ticks: { callback: function (v) { return v + '%'; } } },
               y: { grid: { display: false } }
             },
             plugins: {
