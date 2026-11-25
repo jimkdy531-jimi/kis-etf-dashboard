@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body class="is-locked">
 
@@ -110,6 +110,13 @@
     <p id="control-hint" class="hint"></p>
   </section>
 
+  <!-- ───────────────── 3포켓 수익률 비교 ───────────────── -->
+  <section id="card-pockets" class="card data-card" hidden>
+    <h2 class="card-title">🏆 장·중·단기 3포켓 수익률 비교</h2>
+    <p class="hint">모의계좌 1개 안에서 각 300만 원씩 나누어 세 전략을 동시에 굴린 기록입니다.</p>
+    <div id="pockets-list" class="pocket-list"></div>
+  </section>
+
   <!-- ───────────────── 보유 종목 ───────────────── -->
   <section id="card-holdings" class="card data-card">
     <h2 class="card-title">📦 보유 종목</h2>
@@ -176,6 +183,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-<script src="app.js?v=3" defer></script>
+<script src="app.js?v=4" defer></script>
 </body>
 </html>

@@ -346,6 +346,11 @@
     exit_code: 0,
     status_text: '실제 주문 3건 접수 (231,810원) - 데모',
     account: { total_eval_krw: 10231810, cash_krw: 7681900, etf_eval_krw: 2549910 },
+    pockets: [
+      { id: 'long', name: '1호 장기 (정적 리밸런싱)', cycle: '매일 점검 · 비중 ±3%p', capital_krw: 3000000, eval_krw: 3032000, return_pct: 1.07, holdings_text: 'KODEX 200 12주 · S&P500 62주 · 국고채3년 9주', signal_reason: '목표 비중(30/50/20) 유지' },
+      { id: 'mid', name: '2호 중기 (2주 듀얼모멘텀)', cycle: '2주(10거래일)마다 교체', capital_krw: 3000000, eval_krw: 3098000, return_pct: 3.27, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (1·3개월 평균 +4.8%)' },
+      { id: 'short', name: '3호 단기 (주간 모멘텀 3-A)', cycle: '매주(5거래일)마다 교체', capital_krw: 3000000, eval_krw: 3055000, return_pct: 1.83, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (20일선 위 · 20일 +2.4%)' }
+    ],
     holdings: [
       { code: '069500', name: 'KODEX 200', target_pct: 40, current_pct: 7.2, qty: 1, price_krw: 73510, eval_krw: 73510, action: 'buy', order_qty: 1 },
       { code: '360750', name: 'TIGER 미국S&P500', target_pct: 40, current_pct: 9.3, qty: 4, price_krw: 23855, eval_krw: 95420, action: 'buy', order_qty: 4 },
@@ -403,6 +408,7 @@
     state.cachedAt = null;
     document.body.classList.remove('is-locked');
     renderSummary();
+    renderPockets();
     renderHoldings();
     renderOrders();
     renderRules();
@@ -562,6 +568,36 @@
     setText('val-cash', fmtWon(s.account && s.account.cash_krw));
     setText('val-etf', fmtWon(s.account && s.account.etf_eval_krw));
     setText('updated-at', (s.updated_at ? String(s.updated_at) : '-') + (state.cachedAt ? ' · 저장본' : ''));
+  }
+
+  function renderPockets() {
+    var card = $('card-pockets');
+    var list = $('pockets-list');
+    if (!card || !list) return;
+    var pockets = (state.status && Array.isArray(state.status.pockets)) ? state.status.pockets : [];
+    if (!pockets.length) {
+      card.hidden = true;
+      list.innerHTML = '';
+      return;
+    }
+    card.hidden = false;
+    list.innerHTML = pockets.map(function (p) {
+      var ret = Number(p.return_pct || 0);
+      var retCls = ret > 0 ? 'pos' : (ret < 0 ? 'neg' : '');
+      var retText = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+      return '<div class="pocket-item">' +
+        '<div class="pocket-head">' +
+          '<div>' +
+            '<div class="pocket-name">' + esc(p.name) + '</div>' +
+            '<div class="pocket-cycle">' + esc(p.cycle || '') + '</div>' +
+          '</div>' +
+          '<div class="pocket-ret ' + retCls + '">' + esc(retText) + '</div>' +
+        '</div>' +
+        '<div class="pocket-eval">평가 <strong>' + esc(won(p.eval_krw)) + '</strong> · 원금 ' + esc(won(p.capital_krw)) + '</div>' +
+        '<div class="pocket-hold">보유: ' + esc(p.holdings_text || '현금 대기') + '</div>' +
+        '<div class="pocket-reason">' + esc(p.signal_reason || '') + '</div>' +
+      '</div>';
+    }).join('');
   }
 
   function renderHoldings() {
@@ -812,6 +848,7 @@
       ? '최근 저장본을 보여 주고 있습니다 (' + kstDateTime(new Date(state.cachedAt).toISOString()) + ' 기준).'
       : '');
     renderSummary();
+    renderPockets();
     renderHoldings();
     renderOrders();
     renderRules();
