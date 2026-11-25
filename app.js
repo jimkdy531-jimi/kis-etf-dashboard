@@ -347,9 +347,9 @@
     status_text: '실제 주문 3건 접수 (231,810원) - 데모',
     account: { total_eval_krw: 10231810, cash_krw: 7681900, etf_eval_krw: 2549910 },
     pockets: [
-      { id: 'long', name: '1호 장기 (정적 리밸런싱)', cycle: '매일 점검 · 비중 ±3%p', capital_krw: 3000000, eval_krw: 3032000, return_pct: 1.07, holdings_text: 'KODEX 200 12주 · S&P500 62주 · 국고채3년 9주', signal_reason: '목표 비중(30/50/20) 유지' },
-      { id: 'mid', name: '2호 중기 (2주 듀얼모멘텀)', cycle: '2주(10거래일)마다 교체', capital_krw: 3000000, eval_krw: 3098000, return_pct: 3.27, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (1·3개월 평균 +4.8%)' },
-      { id: 'short', name: '3호 단기 (주간 모멘텀 3-A)', cycle: '매주(5거래일)마다 교체', capital_krw: 3000000, eval_krw: 3055000, return_pct: 1.83, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (20일선 위 · 20일 +2.4%)' }
+      { id: 'long', name: '1호 장기 (정적 리밸런싱)', cycle: '매일 점검 · 비중 ±3%p', capital_krw: 3000000, eval_krw: 3032000, return_pct: 1.07, holdings_text: 'KODEX 200 12주 · S&P500 62주 · 국고채3년 9주', signal_reason: '목표 비중(30/50/20) 유지', last_rebal_date: '2026-11-25' },
+      { id: 'mid', name: '2호 중기 (2주 듀얼모멘텀)', cycle: '2주(10거래일)마다 교체', capital_krw: 3000000, eval_krw: 3098000, return_pct: 3.27, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (1·3개월 평균 +4.8%)', last_rebal_date: '2026-11-25' },
+      { id: 'short', name: '3호 단기 (주간 모멘텀 3-A)', cycle: '매주(5거래일)마다 교체', capital_krw: 3000000, eval_krw: 3055000, return_pct: 1.83, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (20일선 위 · 20일 +2.4%)', last_rebal_date: '2026-11-25' }
     ],
     holdings: [
       { code: '069500', name: 'KODEX 200', target_pct: 40, current_pct: 7.2, qty: 1, price_krw: 73510, eval_krw: 73510, action: 'buy', order_qty: 1 },
@@ -585,11 +585,12 @@
       var ret = Number(p.return_pct || 0);
       var retCls = ret > 0 ? 'pos' : (ret < 0 ? 'neg' : '');
       var retText = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+      var dateText = p.last_rebal_date ? ('진입/교체일 ' + p.last_rebal_date) : '첫 진입 대기';
       return '<div class="pocket-item">' +
         '<div class="pocket-head">' +
           '<div>' +
             '<div class="pocket-name">' + esc(p.name) + '</div>' +
-            '<div class="pocket-cycle">' + esc(p.cycle || '') + '</div>' +
+            '<div class="pocket-cycle">' + esc(p.cycle || '') + ' · ' + esc(dateText) + '</div>' +
           '</div>' +
           '<div class="pocket-ret ' + retCls + '">' + esc(retText) + '</div>' +
         '</div>' +
