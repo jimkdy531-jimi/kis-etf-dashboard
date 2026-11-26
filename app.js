@@ -15,6 +15,7 @@
   var WORKFLOW = 'rebalance.yml';
   var BRANCH = 'main';
   var API = 'https://api.github.com';
+  var LIVE_API_URL = 'https://3-36-0-31.sslip.io/live';
   var ACTIONS_URL = 'https://github.com/' + OWNER + '/' + REPO + '/actions';
 
   var TOKEN_KEY = 'kis_etf_pat_v1';
@@ -275,6 +276,26 @@
         });
       })
       .catch(function () { return null; });
+  }
+
+  function fetchLive() {
+    var token = getToken();
+    if (!token || !LIVE_API_URL) return Promise.resolve(null);
+    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, 4500) : null;
+    return fetch(LIVE_API_URL + '?_t=' + Date.now(), {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined
+    }).then(function (res) {
+      if (timer) clearTimeout(timer);
+      if (!res.ok) return null;
+      return res.json();
+    }).catch(function () {
+      if (timer) clearTimeout(timer);
+      return null;
+    });
   }
 
   function fetchRuns() {
@@ -967,15 +988,17 @@
     }
     setLoading(true);
     return Promise.all([
+      fetchLive(),
       fetchStatus().catch(function (err) { return { error: err }; }),
       fetchRuns().catch(function () { return []; }),
       fetchVariables().catch(function () { return { vars: {}, readable: false }; }),
       fetchBithumb()
     ]).then(function (results) {
-      var statusResult = results[0];
-      var runs = results[1];
-      var varResult = results[2];
-      state.bithumb = results[3] || state.bithumb;
+      var liveData = results[0];
+      var statusResult = (liveData && liveData.status) ? { status: liveData.status } : results[1];
+      var runs = results[2];
+      var varResult = results[3];
+      state.bithumb = (liveData && liveData.bithumb) ? liveData.bithumb : (results[4] || state.bithumb);
 
       state.runs = runs;
       if (varResult && varResult.readable !== undefined) {

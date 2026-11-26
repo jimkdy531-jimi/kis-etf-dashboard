@@ -6,7 +6,7 @@
      (화면을 고칠 때마다 휴대폰이 옛 화면을 붙잡고 있지 않도록)
    · GitHub API(계좌 데이터)는 절대 캐시하지 않습니다. 항상 새로 받아옵니다.
    ============================================================================= */
-var CACHE_NAME = 'kis-etf-dashboard-v8';
+var CACHE_NAME = 'kis-etf-dashboard-v9';
 var SHELL = [
   './',
   './index.html',
