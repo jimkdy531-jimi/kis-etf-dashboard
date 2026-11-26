@@ -21,6 +21,8 @@
   var TOKEN_KEY = 'kis_etf_pat_v1';
   var CACHE_KEY = 'kis_etf_cache_v1';
   var AUTO_REFRESH_MS = 60 * 1000;
+  var LIVE_TIMEOUT_MS = 8000;
+  var ETF_PRINCIPAL_KRW = 10000000;  // 한투 모의투자 시작 원금(1,000만 원)
 
   // ===========================================================================
   // 1. 순수 도우미 (화면 없이도 검증 가능한 함수들)
@@ -64,6 +66,39 @@
     var d = typeof digits === 'number' ? digits : 1;
     if (value == null || value === '') return '-';
     return toNumber(value).toFixed(d) + '%';
+  }
+
+  /** +1,170원 / -1,170원 / 0원 */
+  function fmtSignedWon(value) {
+    if (value == null || value === '') return '-';
+    var n = Math.round(toNumber(value));
+    if (n === 0) return '0원';
+    return (n > 0 ? '+' : '-') + Math.abs(n).toLocaleString('ko-KR') + '원';
+  }
+
+  /** +1.52% / -0.57% / 0.00% */
+  function fmtSignedPct(value, digits) {
+    if (value == null || value === '') return '-';
+    var d = typeof digits === 'number' ? digits : 2;
+    var n = toNumber(value);
+    var text = Math.abs(n).toFixed(d) + '%';
+    if (n === 0) return text;
+    return (n > 0 ? '+' : '-') + text;
+  }
+
+  /** 수익(pos·빨강) / 손실(neg·파랑) / 변동 없음(flat) */
+  function toneOf(value) {
+    var n = toNumber(value);
+    if (n > 0) return 'pos';
+    if (n < 0) return 'neg';
+    return 'flat';
+  }
+
+  function toneArrow(value) {
+    var tone = toneOf(value);
+    if (tone === 'pos') return '▲ ';
+    if (tone === 'neg') return '▼ ';
+    return '';
   }
 
   function decodeBase64Utf8(b64) {
@@ -185,6 +220,122 @@
     };
   }
 
+  // ── 전체 성적표에 쓰는 계산 (화면 없이 검증 가능) ────────────────────────
+  /** 한투 ETF 모의투자: 총평가·원금 대비 손익·한 줄 상태 */
+  function summarizeEtf(status) {
+    var s = status || {};
+    var account = s.account || {};
+    var total = toNumber(account.total_eval_krw);
+    var base = toNumber(account.principal_krw) || ETF_PRINCIPAL_KRW;
+    var profit = total - base;
+    var pct = base > 0 ? (profit / base) * 100 : 0;
+    var holdings = Array.isArray(s.holdings) ? s.holdings : [];
+    var heldCount = holdings.filter(function (h) { return toNumber(h.qty) > 0; }).length;
+    var orderCount = Array.isArray(s.orders) ? s.orders.length : 0;
+    var cash = toNumber(account.cash_krw);
+    var line = heldCount
+      ? 'ETF ' + heldCount + '종목 보유 중 · 쓸 수 있는 현금 ' + fmtWon(cash)
+      : '아직 산 종목 없음 · 전액 현금 ' + fmtWon(cash);
+    if (orderCount) line += ' · 오늘 주문 ' + orderCount + '건';
+    return { total: total, base: base, profit: profit, pct: pct, heldCount: heldCount, cash: cash, orderCount: orderCount, line: line };
+  }
+
+  /** 코인 모의투자(가상 1,000만 원) */
+  function summarizePaper(paper) {
+    var p = paper || {};
+    var base = toNumber(p.initial_capital) || 10000000;
+    var total = toNumber(p.total_eval);
+    var profit = total - base;
+    var pct = base > 0 ? (profit / base) * 100 : 0;
+    var held = Array.isArray(p.held_coins) ? p.held_coins : [];
+    var line = held.length
+      ? held.join(' · ') + ' 보유 중 · 현금 ' + fmtWon(p.cash)
+      : '전액 현금 대기 중 (20일선 아래) · ' + fmtWon(p.cash);
+    return { total: total, base: base, profit: profit, pct: pct, held: held, line: line };
+  }
+
+  /** 내 빗썸 실제 계좌: 코인은 매입가(산 값) 대비 손익으로 계산한다 — 입금 원금은 알 수 없다 */
+  function summarizeBithumb(bithumb) {
+    var b = bithumb || {};
+    var coins = Array.isArray(b.coins) ? b.coins : [];
+    var cost = 0;
+    var evalSum = 0;
+    coins.forEach(function (c) {
+      var qty = toNumber(c.qty);
+      var avg = toNumber(c.avg);
+      var ev = (c.eval != null && c.eval !== '') ? toNumber(c.eval) : qty * toNumber(c.price);
+      evalSum += ev;
+      if (avg > 0) cost += qty * avg;
+    });
+    var profit = cost > 0 ? evalSum - cost : null;
+    var pct = cost > 0 ? (profit / cost) * 100 : null;
+    var line = coins.length
+      ? '코인 ' + coins.length + '종목 보유 중 · 원화 ' + fmtWon(b.krw)
+      : '코인 없음 · 원화 ' + fmtWon(b.krw) + ' 대기 중';
+    return { total: toNumber(b.total_eval), cost: cost, profit: profit, pct: pct, heldCount: coins.length, krw: toNumber(b.krw), line: line };
+  }
+
+  /** "1호 장기 (정적 리밸런싱)" -> { title: "1호 장기", sub: "정적 리밸런싱" } */
+  function pocketLabel(name) {
+    var text = String(name == null ? '' : name).trim();
+    var m = text.match(/^(\d+호\s*\S+)\s*\((.+)\)\s*$/);
+    if (m) return { title: m[1], sub: m[2] };
+    return { title: text, sub: '' };
+  }
+
+  /** 포켓의 전문 용어를 옆에 붙일 쉬운 말로 풀어 준다 (모르는 말은 빈 문자열) */
+  function glossReason(reason) {
+    var r = String(reason == null ? '' : reason);
+    var notes = [];
+    function add(text) { if (text && notes.indexOf(text) === -1) notes.push(text); }
+    if (/모멘텀\s*음수/.test(r)) add('주식 추세가 약해서 안전한 국고채로 피신 중');
+    if (/20일선 위 상승 종목 없음|20일선 위 종목 없음/.test(r)) add('20일선 위로 올라선 종목이 없어 안전한 국고채로 피신 중');
+    if (/국고채\s*3?년?\s*대피/.test(r) && notes.join(' ').indexOf('피신') === -1) add('안전한 국고채3년으로 피신 중');
+    if (/비중 이탈/.test(r)) add('목표 비중에서 3%p 넘게 벗어나 다시 맞추는 중');
+    if (/(선택|1등)/.test(r) && !/대피/.test(r)) add('요즘 가장 강한 종목을 골라 담은 상태');
+    var next = r.match(/다음 교체\s*(\d+)\s*거래일 후/);
+    if (next) add('다음 교체까지 ' + next[1] + '거래일 남음');
+    return notes.join(' · ');
+  }
+
+  /** 포켓 하나를 화면에 그릴 값으로 정리 */
+  function pocketSummary(pocket) {
+    var p = pocket || {};
+    var capital = toNumber(p.capital_krw);
+    var evalKrw = toNumber(p.eval_krw);
+    var profit = (p.profit_krw != null && p.profit_krw !== '') ? toNumber(p.profit_krw) : (evalKrw - capital);
+    var pct = (p.return_pct != null && p.return_pct !== '') ? toNumber(p.return_pct) : (capital > 0 ? (profit / capital) * 100 : 0);
+    return {
+      capital: capital,
+      evalKrw: evalKrw,
+      profit: profit,
+      pct: pct,
+      label: pocketLabel(p.name),
+      cycle: p.cycle || '',
+      date: p.last_rebal_date || '',
+      holdText: p.holdings_text || '현금 대기',
+      reason: p.signal_reason || '',
+      plain: glossReason(p.signal_reason)
+    };
+  }
+
+  /** 종목 하나의 평단·현재가·평가금액·수익 (값이 없으면 null) */
+  function holdingProfit(h) {
+    var row = h || {};
+    var qty = toNumber(row.qty);
+    var price = toNumber(row.price_krw);
+    var hasAvg = row.avg_price_krw != null && row.avg_price_krw !== '';
+    var avg = hasAvg ? toNumber(row.avg_price_krw) : null;
+    var evalKrw = (row.eval_krw != null && row.eval_krw !== '') ? toNumber(row.eval_krw) : qty * price;
+    var profit = (row.profit_krw != null && row.profit_krw !== '')
+      ? toNumber(row.profit_krw)
+      : (avg != null ? (price - avg) * qty : null);
+    var pct = (row.profit_pct != null && row.profit_pct !== '')
+      ? toNumber(row.profit_pct)
+      : (avg ? ((price - avg) / avg) * 100 : null);
+    return { avg: avg, price: price, evalKrw: evalKrw, profit: profit, pct: pct };
+  }
+
   // ===========================================================================
   // 2. 상태 저장 (토큰·캐시)
   // ===========================================================================
@@ -282,7 +433,7 @@
     var token = getToken();
     if (!token || !LIVE_API_URL) return Promise.resolve(null);
     var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, 4500) : null;
+    var timer = controller ? setTimeout(function () { controller.abort(); }, LIVE_TIMEOUT_MS) : null;
     return fetch(LIVE_API_URL + '?_t=' + Date.now(), {
       method: 'GET',
       headers: { 'Authorization': 'Bearer ' + token },
@@ -368,6 +519,7 @@
     cachedAt: null,
     loading: false,
     demo: false,
+    live: false,
     charts: {}
   };
 
@@ -386,9 +538,9 @@
       { id: 'short', name: '3호 단기 (주간 모멘텀 3-A)', cycle: '매주(5거래일)마다 교체', capital_krw: 3000000, eval_krw: 3055000, return_pct: 1.83, holdings_text: 'TIGER 미국나스닥100 22주', signal_reason: 'TIGER 미국나스닥100 선택 (20일선 위 · 20일 +2.4%)', last_rebal_date: '2026-11-25' }
     ],
     holdings: [
-      { code: '069500', name: 'KODEX 200', target_pct: 40, current_pct: 7.2, qty: 1, price_krw: 73510, eval_krw: 73510, action: 'buy', order_qty: 1 },
-      { code: '360750', name: 'TIGER 미국S&P500', target_pct: 40, current_pct: 9.3, qty: 4, price_krw: 23855, eval_krw: 95420, action: 'buy', order_qty: 4 },
-      { code: '114260', name: 'KODEX 국고채3년', target_pct: 20, current_pct: 6.1, qty: 1, price_krw: 62880, eval_krw: 62880, action: 'hold', order_qty: 0 }
+      { code: '069500', name: 'KODEX 200', target_pct: 40, current_pct: 7.2, qty: 1, price_krw: 73510, eval_krw: 73510, avg_price_krw: 72800, profit_krw: 710, profit_pct: 0.98, action: 'buy', order_qty: 1 },
+      { code: '360750', name: 'TIGER 미국S&P500', target_pct: 40, current_pct: 9.3, qty: 4, price_krw: 23855, eval_krw: 95420, avg_price_krw: 23100, profit_krw: 3020, profit_pct: 3.27, action: 'buy', order_qty: 4 },
+      { code: '114260', name: 'KODEX 국고채3년', target_pct: 20, current_pct: 6.1, qty: 1, price_krw: 62880, eval_krw: 62880, avg_price_krw: 62900, profit_krw: -20, profit_pct: -0.03, action: 'hold', order_qty: 0 }
     ],
     orders: [
       { side: 'buy', code: '069500', name: 'KODEX 200', qty: 1, price_krw: 73510, amount_krw: 73510, order_no: '0000022623', status: '접수' },
@@ -441,7 +593,16 @@
       coins: [
         { currency: 'XRP', qty: 6684, avg: 3163, price: 1248, eval: 8341632 },
         { currency: 'USDT', qty: 339.9, avg: 1475, price: 1361, eval: 462603 }
-      ]
+      ],
+      paper: {
+        updated_at: '2026-11-26 09:05 KST (예시)',
+        strategy: '20일선 추세추종 (메이저 4코인 균형 · 하락 시 현금 대피)',
+        initial_capital: 10000000,
+        total_eval: 10000000,
+        cash: 10000000,
+        return_pct: 0,
+        held_coins: []
+      }
     };
     state.runs = DEMO_RUNS.map(function (r, i) {
       r.html_url = ACTIONS_URL;  // 데모에서는 링크도 실제 저장소로
@@ -450,10 +611,13 @@
     state.vars = { KIS_MODE: 'vps', KIS_DRY_RUN: 'false', KIS_KILL_SWITCH: 'false' };
     state.varsReadable = true;
     state.cachedAt = null;
+    state.live = false;
     document.body.classList.remove('is-locked');
+    renderScoreboard();
     renderSummary();
     renderPockets();
     renderBithumb();
+    renderPaper();
     renderHoldings();
     renderOrders();
     renderRules();
@@ -615,6 +779,185 @@
     setText('updated-at', (s.updated_at ? String(s.updated_at) : '-') + (state.cachedAt ? ' · 저장본' : ''));
   }
 
+  // ── 1) 맨 위 전체 성적표 (한투 / 코인 모의 / 빗썸 실제) ────────────────
+  function scoreBlockHtml(cfg) {
+    var tone = (cfg.profit == null) ? 'flat' : toneOf(cfg.profit);
+    var pnl;
+    if (cfg.profit == null) {
+      pnl = '<div class="score-pnl flat">산 값 정보가 없어 손익을 계산하지 못했습니다</div>';
+    } else {
+      pnl = '<div class="score-pnl ' + tone + '">' + toneArrow(cfg.profit) + escapeHtml(fmtSignedWon(cfg.profit)) +
+        ' <b>' + escapeHtml('(' + fmtSignedPct(cfg.pct, 2) + ')') + '</b>' +
+        '<span class="pnl-base">' + escapeHtml(cfg.baseLabel) + '</span></div>';
+    }
+    return '<div class="score ' + escapeHtml(cfg.cls) + '">' +
+      '<div class="score-top">' +
+        '<span class="score-name">' + escapeHtml(cfg.name) + '</span>' +
+        '<span class="pill ' + escapeHtml(cfg.tagCls) + '">' + escapeHtml(cfg.tag) + '</span>' +
+      '</div>' +
+      '<div class="score-total">' +
+        '<span class="score-label">총 평가금액</span>' +
+        '<span class="score-value">' + escapeHtml(fmtWon(cfg.total)) + '</span>' +
+      '</div>' +
+      pnl +
+      '<div class="score-line">' + escapeHtml(cfg.line) + '</div>' +
+      (cfg.extra || '') +
+    '</div>';
+  }
+
+  function scoreMissingHtml(name, why) {
+    return '<div class="score-missing"><b>' + escapeHtml(name) + '</b> · ' + escapeHtml(why) + '</div>';
+  }
+
+  function renderScoreboard() {
+    var list = $('score-list');
+    if (!list) return;
+    var blocks = [];
+    var s = state.status;
+
+    if (s) {
+      var etf = summarizeEtf(s);
+      blocks.push(scoreBlockHtml({
+        cls: 'score-etf',
+        name: '🏦 한투 ETF 자동매매',
+        tag: (s.mode === 'prod' ? '실전투자' : '모의투자 (연습)'),
+        tagCls: (s.mode === 'prod' ? 'pill-bad' : 'pill-info'),
+        total: etf.total,
+        profit: etf.profit,
+        pct: etf.pct,
+        baseLabel: '원금 ' + fmtWon(etf.base) + ' 대비',
+        line: etf.line,
+        extra: '<div id="status-badges" class="badges">' +
+                 '<span id="badge-mode" class="pill pill-soft">-</span>' +
+                 '<span id="badge-dry" class="pill pill-soft">-</span>' +
+                 '<span id="badge-kill" class="pill pill-soft">-</span>' +
+               '</div>'
+      }));
+    }
+
+    var paper = (state.bithumb && state.bithumb.paper) ? state.bithumb.paper : null;
+    if (paper) {
+      var pp = summarizePaper(paper);
+      blocks.push(scoreBlockHtml({
+        cls: 'score-paper',
+        name: '🤖 코인 모의투자',
+        tag: '가상 1,000만 원',
+        tagCls: 'pill-info',
+        total: pp.total,
+        profit: pp.profit,
+        pct: pp.pct,
+        baseLabel: '가상 원금 ' + fmtWon(pp.base) + ' 대비',
+        line: pp.line
+      }));
+    } else if (s) {
+      blocks.push(scoreMissingHtml('🤖 코인 모의투자', '아직 코인 모의투자 기록을 받지 못했습니다'));
+    }
+
+    var b = state.bithumb;
+    if (b && Array.isArray(b.coins)) {
+      var bb = summarizeBithumb(b);
+      blocks.push(scoreBlockHtml({
+        cls: 'score-bithumb',
+        name: '🪙 내 빗썸 실제 계좌',
+        tag: '실제 돈',
+        tagCls: 'pill-warn',
+        total: bb.total,
+        profit: bb.profit,
+        pct: bb.pct,
+        baseLabel: '보유 코인 산 값(매입가) 대비',
+        line: bb.line
+      }));
+    } else if (s) {
+      blocks.push(scoreMissingHtml('🪙 내 빗썸 실제 계좌', '빗썸 정보를 불러오지 못했습니다 (서울 서버 연결 필요)'));
+    }
+
+    list.innerHTML = blocks.join('');
+    var note = $('score-note');
+    if (note) {
+      note.className = 'hint';
+      note.textContent = state.live
+        ? '서울 서버에서 방금 받은 실시간 값입니다.'
+        : '마지막 실행 때 저장된 값입니다. (서울 실시간 서버에 연결되지 않아 조금 늦을 수 있습니다)';
+    }
+  }
+
+  // ── 2) 지금 들어가 있는 종목 (보유 수량 > 0 만 크게) ────────────────────
+  function holdingCardHtml(h) {
+    var p = holdingProfit(h);
+    var label = actionLabel(h.action);
+    var tone = (p.profit == null) ? 'flat' : toneOf(p.profit);
+    var orderQty = toNumber(h.order_qty);
+    return '<div class="holding">' +
+      '<div class="holding-top">' +
+        '<div>' +
+          '<div class="holding-name">' + escapeHtml(h.name || h.code) + '</div>' +
+          '<div class="holding-code">' + escapeHtml(h.code) + ' · ' + toNumber(h.qty).toLocaleString('ko-KR') + '주 보유</div>' +
+        '</div>' +
+        '<div class="holding-pnl ' + tone + '">' +
+          '<div class="pnl-pct">' + escapeHtml(p.pct == null ? '-' : fmtSignedPct(p.pct, 2)) + '</div>' +
+          '<div class="pnl-won">' + escapeHtml(p.profit == null ? '평단 확인 안 됨' : fmtSignedWon(p.profit)) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="holding-grid">' +
+        '<div><span>보유 주수</span><b>' + escapeHtml(toNumber(h.qty).toLocaleString('ko-KR')) + '주</b></div>' +
+        '<div><span>매입평단</span><b>' + escapeHtml(p.avg == null ? '확인 안 됨' : fmtWon(p.avg)) + '</b></div>' +
+        '<div><span>현재가</span><b>' + escapeHtml(fmtWon(p.price)) + '</b></div>' +
+        '<div><span>평가금액</span><b>' + escapeHtml(fmtWon(p.evalKrw)) + '</b></div>' +
+      '</div>' +
+      '<div class="holding-foot">' +
+        '<span class="pill ' + label.cls + '">' + escapeHtml(label.text) + '</span>' +
+        (orderQty > 0 ? '<span class="order-qty">이번 주문 ' + orderQty.toLocaleString('ko-KR') + '주</span>' : '') +
+        '<span class="holding-code">목표 비중 ' + escapeHtml(fmtPct(h.target_pct)) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderHoldings() {
+    var list = $('holdings-list');
+    var empty = $('holdings-empty');
+    var waitBox = $('waiting-box');
+    var waitList = $('waiting-list');
+    var waitSummary = $('waiting-summary');
+    if (!list) return;
+    var holdings = (state.status && state.status.holdings) || [];
+    var held = holdings.filter(function (h) { return toNumber(h.qty) > 0; });
+    var waiting = holdings.filter(function (h) { return toNumber(h.qty) <= 0; });
+
+    if (held.length) {
+      show(empty, false);
+      list.innerHTML = held.map(holdingCardHtml).join('');
+    } else {
+      list.innerHTML = '';
+      show(empty, true);
+    }
+
+    if (waitBox) {
+      if (waiting.length) {
+        if (waitSummary) waitSummary.textContent = '대기 중인 종목 ' + waiting.length + '개 보기 (아직 안 산 종목)';
+        if (waitList) {
+          waitList.innerHTML = waiting.map(function (h) {
+            var orderQty = toNumber(h.order_qty);
+            var note = orderQty > 0
+              ? '다음에 ' + orderQty.toLocaleString('ko-KR') + '주 살 예정'
+              : '아직 안 들어감';
+            return '<div class="waiting">' +
+              '<div>' +
+                '<div class="waiting-name">' + escapeHtml(h.name || h.code) + '</div>' +
+                '<div class="waiting-meta" style="text-align:left">' + escapeHtml(h.code) + ' · 목표 ' + escapeHtml(fmtPct(h.target_pct)) + '</div>' +
+              '</div>' +
+              '<div class="waiting-meta">현재가 ' + escapeHtml(fmtWon(h.price_krw)) + '<br>' + escapeHtml(note) + '</div>' +
+            '</div>';
+          }).join('');
+        }
+        show(waitBox, true);
+      } else {
+        if (waitList) waitList.innerHTML = '';
+        show(waitBox, false);
+      }
+    }
+  }
+
+  // ── 3) 3포켓 성적 ───────────────────────────────────────────────────
   function renderPockets() {
     var card = $('card-pockets');
     var list = $('pockets-list');
@@ -627,33 +970,74 @@
     }
     card.hidden = false;
     list.innerHTML = pockets.map(function (p) {
-      var ret = Number(p.return_pct || 0);
-      var retCls = ret > 0 ? 'pos' : (ret < 0 ? 'neg' : '');
-      var retText = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
-      var dateText = p.last_rebal_date ? ('진입/교체일 ' + p.last_rebal_date) : '첫 진입 대기';
+      var ps = pocketSummary(p);
+      var tone = toneOf(ps.profit);
+      var dateText = ps.date ? ('진입/교체 ' + ps.date) : '첫 진입 대기';
       return '<div class="pocket-item">' +
         '<div class="pocket-head">' +
           '<div>' +
-            '<div class="pocket-name">' + escapeHtml(p.name) + '</div>' +
-            '<div class="pocket-cycle">' + escapeHtml(p.cycle || '') + ' · ' + escapeHtml(dateText) + '</div>' +
+            '<div class="pocket-name">' + escapeHtml(ps.label.title) + '</div>' +
+            (ps.label.sub ? '<div class="pocket-cycle">' + escapeHtml(ps.label.sub) + '</div>' : '') +
+            '<div class="pocket-cycle">' + escapeHtml(ps.cycle) + ' · ' + escapeHtml(dateText) + '</div>' +
           '</div>' +
-          '<div class="pocket-ret ' + retCls + '">' + escapeHtml(retText) + '</div>' +
+          '<div class="pocket-ret ' + tone + '">' +
+            '<span class="pocket-pct">' + escapeHtml(toneArrow(ps.profit) + fmtSignedPct(ps.pct, 2)) + '</span>' +
+            '<span class="pocket-pnl">' + escapeHtml(fmtSignedWon(ps.profit)) + '</span>' +
+          '</div>' +
         '</div>' +
-        '<div class="pocket-eval">평가 <strong>' + escapeHtml(fmtWon(p.eval_krw)) + '</strong> · 원금 ' + escapeHtml(fmtWon(p.capital_krw)) + '</div>' +
-        '<div class="pocket-hold">보유: ' + escapeHtml(p.holdings_text || '현금 대기') + '</div>' +
-        '<div class="pocket-reason">' + escapeHtml(p.signal_reason || '') + '</div>' +
+        '<div class="pocket-eval">평가 <strong>' + escapeHtml(fmtWon(ps.evalKrw)) + '</strong> · 원금 ' + escapeHtml(fmtWon(ps.capital)) + '</div>' +
+        '<div class="pocket-hold">📦 들고 있는 것: ' + escapeHtml(ps.holdText) + '</div>' +
+        '<div class="pocket-why">' +
+          '<span class="why-label">왜?</span>' + escapeHtml(ps.reason || '규칙대로 유지 중') +
+          (ps.plain ? '<div class="why-plain">→ ' + escapeHtml(ps.plain) + '</div>' : '') +
+        '</div>' +
       '</div>';
     }).join('');
+  }
+
+  // ── 4) 내 빗썸 실제 계좌 ───────────────────────────────────────────────
+  function bithumbCoinHtml(c) {
+    var qty = toNumber(c.qty);
+    var avg = toNumber(c.avg);
+    var price = toNumber(c.price);
+    var ev = (c.eval != null && c.eval !== '') ? toNumber(c.eval) : qty * price;
+    var profit = avg > 0 ? (price - avg) * qty : null;
+    var pct = avg > 0 ? ((price - avg) / avg) * 100 : null;
+    var tone = (profit == null) ? 'flat' : toneOf(profit);
+    var qtyStr = qty >= 100
+      ? Math.round(qty).toLocaleString('ko-KR')
+      : qty.toFixed(2).replace(/\.?0+$/, '');
+    return '<div class="holding">' +
+      '<div class="holding-top">' +
+        '<div>' +
+          '<div class="holding-name">' + escapeHtml(c.currency) + '</div>' +
+          '<div class="holding-code">' + escapeHtml(qtyStr) + '개 보유</div>' +
+        '</div>' +
+        '<div class="holding-pnl ' + tone + '">' +
+          '<div class="pnl-pct">' + escapeHtml(pct == null ? '-' : fmtSignedPct(pct, 1)) + '</div>' +
+          '<div class="pnl-won">' + escapeHtml(profit == null ? '매입가 확인 안 됨' : fmtSignedWon(profit)) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="holding-grid">' +
+        '<div><span>매입평단</span><b>' + escapeHtml(avg > 0 ? fmtWon(avg) : '-') + '</b></div>' +
+        '<div><span>현재가</span><b>' + escapeHtml(fmtWon(price)) + '</b></div>' +
+        '<div><span>평가금액</span><b>' + escapeHtml(fmtWon(ev)) + '</b></div>' +
+        '<div><span>보유 수량</span><b>' + escapeHtml(qtyStr) + '개</b></div>' +
+      '</div>' +
+    '</div>';
   }
 
   function renderBithumb() {
     var card = $('card-bithumb');
     var list = $('bithumb-list');
+    var empty = $('bithumb-empty');
+    var profitEl = $('bithumb-profit');
     if (!card || !list) return;
     var b = state.bithumb;
     if (!b || !Array.isArray(b.coins)) {
       card.hidden = true;
       list.innerHTML = '';
+      if (profitEl) profitEl.textContent = '';
       return;
     }
     card.hidden = false;
@@ -661,104 +1045,47 @@
     setText('bithumb-total', fmtWon(b.total_eval));
     setText('bithumb-krw', fmtWon(b.krw));
     setText('bithumb-point', Math.round(toNumber(b.point)).toLocaleString('ko-KR') + ' P');
-    list.innerHTML = b.coins.map(function (c) {
-      var price = toNumber(c.price);
-      var avg = toNumber(c.avg);
-      var ret = avg > 0 ? ((price - avg) / avg) * 100 : 0;
-      var retCls = ret > 0 ? 'pos' : (ret < 0 ? 'neg' : '');
-      var retText = avg > 0 ? ((ret > 0 ? '+' : '') + ret.toFixed(1) + '%') : '-';
-      var qtyStr = toNumber(c.qty) >= 100
-        ? Math.round(toNumber(c.qty)).toLocaleString('ko-KR')
-        : toNumber(c.qty).toFixed(2);
-      return '<div class="holding">' +
-        '<div class="holding-top">' +
-          '<div>' +
-            '<span class="holding-name">' + escapeHtml(c.currency) + '</span>' +
-            '<span class="holding-code">' + escapeHtml(qtyStr) + '개</span>' +
-          '</div>' +
-          '<span class="pocket-ret ' + retCls + '">' + escapeHtml(retText) + '</span>' +
-        '</div>' +
-        '<div class="holding-meta">' +
-          '<span>평가 <strong>' + escapeHtml(fmtWon(c.eval)) + '</strong></span>' +
-          '<span>현재가 ' + escapeHtml(price.toLocaleString('ko-KR')) + '원</span>' +
-          '<span>평단 ' + escapeHtml(avg.toLocaleString('ko-KR')) + '원</span>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-    var paperEl = $('bithumb-paper');
-    if (paperEl) {
-      var p = b.paper;
-      if (!p) {
-        paperEl.hidden = true;
-        paperEl.innerHTML = '';
+
+    var sb = summarizeBithumb(b);
+    if (profitEl) {
+      if (sb.profit == null) {
+        profitEl.className = 'profit-line';
+        profitEl.textContent = '산 값(매입가)을 알 수 있는 코인이 없어 손익을 계산하지 못했습니다.';
       } else {
-        paperEl.hidden = false;
-        var pRet = Number(p.return_pct || 0);
-        var pRetCls = pRet > 0 ? 'pos' : (pRet < 0 ? 'neg' : '');
-        var pRetText = (pRet > 0 ? '+' : '') + pRet.toFixed(2) + '%';
-        var heldText = (Array.isArray(p.held_coins) && p.held_coins.length)
-          ? p.held_coins.join(', ') + ' 보유 중'
-          : '전액 현금 대피 (20일선 아래)';
-        paperEl.innerHTML = '<div class="pocket-item">' +
-          '<div class="pocket-head">' +
-            '<div>' +
-              '<div class="pocket-name">🤖 코인 페이퍼 트레이딩 (가상 1,000만 원)</div>' +
-              '<div class="pocket-cycle">' + escapeHtml(p.strategy || '20일선 추세추종') + ' · ' + escapeHtml(p.updated_at || '-') + '</div>' +
-            '</div>' +
-            '<div class="pocket-ret ' + pRetCls + '">' + escapeHtml(pRetText) + '</div>' +
-          '</div>' +
-          '<div class="pocket-eval">평가 <strong>' + escapeHtml(fmtWon(p.total_eval)) + '</strong> · 현금 ' + escapeHtml(fmtWon(p.cash)) + '</div>' +
-          '<div class="pocket-hold">상태: ' + escapeHtml(heldText) + '</div>' +
-        '</div>';
+        profitEl.className = 'profit-line ' + toneOf(sb.profit);
+        profitEl.textContent = toneArrow(sb.profit) + '보유 코인 손익 ' + fmtSignedWon(sb.profit) +
+          ' (' + fmtSignedPct(sb.pct, 2) + ') · 산 값 대비';
       }
     }
+    list.innerHTML = b.coins.map(bithumbCoinHtml).join('');
+    show(empty, b.coins.length === 0);
   }
 
-  function renderHoldings() {
-    var list = $('holdings-list');
-    var empty = $('holdings-empty');
-    if (!list) return;
-    var holdings = (state.status && state.status.holdings) || [];
-    if (!holdings.length) {
-      list.innerHTML = '';
-      show(empty, true);
+  // ── 5) 코인 모의투자 (가상 1,000만 원) ─────────────────────────────────
+  function renderPaper() {
+    var card = $('card-paper');
+    var box = $('paper-box');
+    if (!card || !box) return;
+    var paper = (state.bithumb && state.bithumb.paper) ? state.bithumb.paper : null;
+    if (!paper) {
+      card.hidden = true;
+      box.innerHTML = '';
       return;
     }
-    show(empty, false);
-    var tolerance = Number((state.status.rules && state.status.rules.tolerance_pct) || 3);
-    var html = holdings.map(function (h) {
-      var label = actionLabel(h.action);
-      var target = toNumber(h.target_pct);
-      var current = toNumber(h.current_pct);
-      var over = current > target + tolerance;
-      var targetWidth = Math.max(0, Math.min(100, target));
-      var currentWidth = Math.max(0, Math.min(100, current));
-      return '' +
-        '<div class="holding">' +
-          '<div class="holding-top">' +
-            '<div>' +
-              '<div class="holding-name">' + escapeHtml(h.name || h.code) + '</div>' +
-              '<div class="holding-code">' + escapeHtml(h.code) + '</div>' +
-            '</div>' +
-            '<span class="pill ' + label.cls + '">' + escapeHtml(label.text) + '</span>' +
-          '</div>' +
-          '<div class="holding-row">' +
-            '<span>보유 <b>' + toNumber(h.qty).toLocaleString('ko-KR') + '주</b></span>' +
-            '<span>현재가 <b>' + fmtWon(h.price_krw) + '</b></span>' +
-            '<span>평가 <b>' + fmtWon(h.eval_krw) + '</b></span>' +
-            '<span>이번 주문 <b>' + toNumber(h.order_qty).toLocaleString('ko-KR') + '주</b></span>' +
-          '</div>' +
-          '<div class="weight-bars">' +
-            '<div class="bar-line"><span>목표</span>' +
-              '<div class="bar-track"><div class="bar-fill target" style="width:' + targetWidth + '%"></div></div>' +
-              '<span class="bar-value">' + fmtPct(target) + '</span></div>' +
-            '<div class="bar-line"><span>현재</span>' +
-              '<div class="bar-track"><div class="bar-fill ' + (over ? 'over' : 'current') + '" style="width:' + currentWidth + '%"></div></div>' +
-              '<span class="bar-value">' + fmtPct(current) + '</span></div>' +
-          '</div>' +
-        '</div>';
-    }).join('');
-    list.innerHTML = html;
+    card.hidden = false;
+    var ps = summarizePaper(paper);
+    setText('paper-updated', paper.updated_at || '-');
+    box.innerHTML =
+      '<div class="paper-total">' +
+        '<span class="paper-label">총 평가금액 (가상)</span>' +
+        '<span class="paper-value">' + escapeHtml(fmtWon(ps.total)) + '</span>' +
+      '</div>' +
+      '<div class="paper-pnl ' + toneOf(ps.profit) + '">' + toneArrow(ps.profit) + escapeHtml(fmtSignedWon(ps.profit)) +
+        ' <b>(' + escapeHtml(fmtSignedPct(ps.pct, 2)) + ')</b>' +
+        '<span class="pnl-base">가상 원금 ' + escapeHtml(fmtWon(ps.base)) + ' 대비</span>' +
+      '</div>' +
+      '<div class="paper-line">' + escapeHtml(ps.line) + '</div>' +
+      '<div class="paper-line">규칙: ' + escapeHtml(paper.strategy || '20일선 추세추종') + '</div>';
   }
 
   function renderOrders() {
@@ -961,9 +1288,11 @@
     notice(state.cachedAt ? 'warn' : '', state.cachedAt
       ? '최근 저장본을 보여 주고 있습니다 (' + kstDateTime(new Date(state.cachedAt).toISOString()) + ' 기준).'
       : '');
+    renderScoreboard();
     renderSummary();
     renderPockets();
     renderBithumb();
+    renderPaper();
     renderHoldings();
     renderOrders();
     renderRules();
@@ -998,6 +1327,7 @@
       var statusResult = (liveData && liveData.status) ? { status: liveData.status } : results[1];
       var runs = results[2];
       var varResult = results[3];
+      state.live = !!(liveData && liveData.status);
       state.bithumb = (liveData && liveData.bithumb) ? liveData.bithumb : (results[4] || state.bithumb);
 
       state.runs = runs;
@@ -1129,8 +1459,7 @@
   }
 
   function bindEvents() {
-    var form = $('token-form');
-    if (form) {
+    var form = $('token-form');    if (form) {
       form.addEventListener('submit', function (event) {
         event.preventDefault();
         var input = $('token-input');
@@ -1172,6 +1501,14 @@
 
     var refreshBtn = $('btn-refresh');
     if (refreshBtn) refreshBtn.addEventListener('click', function () { refresh(); });
+
+    // 접힌 차트 상자를 열 때 다시 그린다 (접힌 동안에는 캔버스 폭이 0이라 그림이 작아진다)
+    var chartBox = $('box-charts');
+    if (chartBox) {
+      chartBox.addEventListener('toggle', function () {
+        if (chartBox.open) renderCharts();
+      });
+    }
 
     var runBtn = $('btn-run');
     if (runBtn) runBtn.addEventListener('click', function () { doRun(); });
@@ -1222,6 +1559,17 @@
     fmtWonShort: fmtWonShort,
     fmtEokWon: fmtEokWon,
     fmtPct: fmtPct,
+    fmtSignedWon: fmtSignedWon,
+    fmtSignedPct: fmtSignedPct,
+    toneOf: toneOf,
+    toneArrow: toneArrow,
+    summarizeEtf: summarizeEtf,
+    summarizePaper: summarizePaper,
+    summarizeBithumb: summarizeBithumb,
+    pocketLabel: pocketLabel,
+    pocketSummary: pocketSummary,
+    glossReason: glossReason,
+    holdingProfit: holdingProfit,
     decodeBase64Utf8: decodeBase64Utf8,
     normalizeToken: normalizeToken,
     maskToken: maskToken,

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>한투 ETF 자동매매</title>
-<meta name="description" content="한국투자증권 ETF 자동매매 현황 - 계좌 요약, 보유 종목, 오늘 주문, 매매 원칙을 휴대폰에서 확인합니다.">
+<title>한투 ETF 자동매매 · 전체 성적표</title>
+<meta name="description" content="한투 ETF 모의투자·코인 모의투자·빗썸 실제 계좌를 한 화면에서 한눈에: 총 평가금액, 손익, 보유 종목, 3포켓 성적.">
 <meta name="theme-color" content="#1a56db">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body class="is-locked">
 
@@ -73,54 +73,42 @@
     <p class="hint"><a href="?demo=1">예시(데모) 화면 미리 보기</a> · 토큰 없이 어떤 화면인지 먼저 볼 수 있습니다.</p>
   </section>
 
-  <!-- ───────────────── 요약 & 제어 ───────────────── -->
-  <section id="card-summary" class="card data-card">
+  <!-- ───────────────── 1. 전체 성적표 (맨 위 3블록) ───────────────── -->
+  <section id="card-scoreboard" class="card data-card">
     <div class="card-head">
-      <h2 class="card-title">📊 오늘의 상태</h2>
+      <h2 class="card-title">📊 한눈에 보는 전체 성적표</h2>
       <span id="updated-at" class="stamp">-</span>
     </div>
-
-    <div id="status-badges" class="badges">
-      <span id="badge-mode" class="pill pill-soft">-</span>
-      <span id="badge-dry" class="pill pill-soft">-</span>
-      <span id="badge-kill" class="pill pill-soft">-</span>
-    </div>
-
-    <p id="status-text" class="status-line">-</p>
-
-    <div class="money-grid">
-      <div class="money">
-        <div class="money-label">총평가금액</div>
-        <div id="val-total" class="money-value">-</div>
-      </div>
-      <div class="money">
-        <div class="money-label">주문가능현금</div>
-        <div id="val-cash" class="money-value">-</div>
-      </div>
-      <div class="money">
-        <div class="money-label">ETF 평가금액</div>
-        <div id="val-etf" class="money-value">-</div>
-      </div>
-    </div>
-
-    <div class="btn-row btn-row-stack">
-      <button id="btn-run" class="btn btn-primary btn-big" type="button">▶ 지금 1회 실행</button>
-      <button id="btn-kill" class="btn btn-danger btn-big" type="button">⏸ 자동매매 일시중지</button>
-    </div>
-    <p id="control-hint" class="hint"></p>
+    <div id="score-list" class="score-list"></div>
+    <p id="score-note" class="hint"></p>
   </section>
 
-  <!-- ───────────────── 3포켓 수익률 비교 ───────────────── -->
+  <!-- ───────────────── 2. 한투 보유 종목 (들어간 것만 크게) ───────────────── -->
+  <section id="card-holdings" class="card data-card">
+    <h2 class="card-title">📦 지금 들어가 있는 종목
+      <span class="title-sub">한투 모의투자</span>
+    </h2>
+    <div id="holdings-list" class="holding-list"></div>
+    <p id="holdings-empty" class="empty" hidden>아직 산 종목이 없습니다. 전부 현금으로 대기 중입니다.</p>
+    <details id="waiting-box" class="fold" hidden>
+      <summary id="waiting-summary">대기 중인 종목 보기</summary>
+      <div id="waiting-list" class="waiting-list"></div>
+    </details>
+  </section>
+
+  <!-- ───────────────── 3. 3포켓 성적 ───────────────── -->
   <section id="card-pockets" class="card data-card" hidden>
-    <h2 class="card-title">🏆 장·중·단기 3포켓 수익률 비교</h2>
-    <p class="hint">모의계좌 1개 안에서 각 300만 원씩 나누어 세 전략을 동시에 굴린 기록입니다.</p>
+    <h2 class="card-title">🏆 3포켓 성적
+      <span class="title-sub">각 300만 원</span>
+    </h2>
+    <p class="hint">모의계좌 하나를 300만 원씩 셋으로 나눠 서로 다른 전략을 동시에 돌린 기록입니다.</p>
     <div id="pockets-list" class="pocket-list"></div>
   </section>
 
-  <!-- ───────────────── 빗썸 보유 자산 ───────────────── -->
+  <!-- ───────────────── 4. 내 빗썸 실제 계좌 ───────────────── -->
   <section id="card-bithumb" class="card data-card" hidden>
     <div class="card-head">
-      <h2 class="card-title">🪙 빗썸 보유 자산</h2>
+      <h2 class="card-title">🪙 내 빗썸 실제 계좌</h2>
       <span id="bithumb-updated" class="stamp">-</span>
     </div>
     <div class="money-grid">
@@ -137,54 +125,93 @@
         <div id="bithumb-point" class="money-value">-</div>
       </div>
     </div>
+    <p id="bithumb-profit" class="profit-line"></p>
     <div id="bithumb-list" class="holding-list"></div>
-    <div id="bithumb-paper" class="pocket-list" style="margin-top:12px" hidden></div>
+    <p id="bithumb-empty" class="empty" hidden>지금은 보유 중인 코인이 없습니다.</p>
   </section>
 
-  <!-- ───────────────── 보유 종목 ───────────────── -->
-  <section id="card-holdings" class="card data-card">
-    <h2 class="card-title">📦 보유 종목</h2>
-    <div id="holdings-list" class="holding-list"></div>
-    <p id="holdings-empty" class="empty" hidden>보유 종목 정보가 없습니다.</p>
+  <!-- ───────────────── 5. 코인 모의투자 (가상) ───────────────── -->
+  <section id="card-paper" class="card data-card" hidden>
+    <div class="card-head">
+      <h2 class="card-title">🤖 코인 모의투자
+        <span class="title-sub">가상 1,000만 원</span>
+      </h2>
+      <span id="paper-updated" class="stamp">-</span>
+    </div>
+    <div id="paper-box" class="paper-box"></div>
+    <p class="hint">실제 돈이 아닙니다. 서울 서버가 매일 09:05에 20일선 추세 규칙으로만 기록합니다.</p>
   </section>
 
-  <!-- ───────────────── 이번 주문 ───────────────── -->
+  <!-- ───────────────── 6. 오늘 나간 주문 ───────────────── -->
   <section id="card-orders" class="card data-card">
-    <h2 class="card-title">🧾 이번 실행 주문</h2>
+    <h2 class="card-title">🧾 오늘 나간 주문</h2>
+    <p id="status-text" class="status-line">-</p>
     <div id="orders-list" class="order-list"></div>
     <p id="orders-empty" class="empty" hidden>이번 실행에서 나간 주문이 없습니다.</p>
   </section>
 
-  <!-- ───────────────── 차트 1: 비중 ───────────────── -->
-  <section id="card-chart-weights" class="card data-card">
-    <h2 class="card-title">🎯 목표 비중 vs 현재 비중</h2>
-    <div class="chart-box"><canvas id="chart-weights"></canvas></div>
-    <p class="chart-note">막대가 목표(회색)보다 짧으면 더 사야 하고, 길면 넘친 상태입니다.</p>
-  </section>
-
-  <!-- ───────────────── 차트 2: 추이 ───────────────── -->
-  <section id="card-chart-history" class="card data-card">
-    <h2 class="card-title">📈 총평가금액 · 매수 추이</h2>
-    <div class="chart-box"><canvas id="chart-history"></canvas></div>
-    <p id="chart-history-empty" class="empty" hidden>아직 쌓인 기록이 하루치뿐이라 추이를 그리지 못했습니다. 내일부터 선이 그려집니다.</p>
-  </section>
-
-  <!-- ───────────────── 매매 원칙 ───────────────── -->
-  <section id="card-rules" class="card data-card">
-    <h2 class="card-title">📌 매매 원칙 한눈에 보기</h2>
-    <div id="rules-grid" class="rules-grid"></div>
-    <div id="rules-targets" class="target-chips"></div>
-  </section>
-
-  <!-- ───────────────── 실행 이력 ───────────────── -->
-  <section id="card-runs" class="card data-card">
-    <div class="card-head">
-      <h2 class="card-title">🕒 최근 실행 5건</h2>
-      <a id="runs-link" class="small-link" href="https://github.com/jimkdy531-jimi/kis-etf-rebalancer/actions" target="_blank" rel="noopener">전체 보기</a>
+  <!-- ───────────────── 7. 접이식: 차트 ───────────────── -->
+  <details id="box-charts" class="card data-card fold-card">
+    <summary>📈 차트로 보기 <span class="fold-hint">목표 비중 · 평가금액 추이</span></summary>
+    <div class="fold-body">
+      <h3 class="fold-title">🎯 목표 비중 vs 현재 비중</h3>
+      <div class="chart-box"><canvas id="chart-weights"></canvas></div>
+      <p class="chart-note">회색(목표)보다 파란 막대(현재)가 짧으면 더 사야 하고, 길면 넘친 상태입니다.</p>
+      <h3 class="fold-title">📈 총평가금액 · 매수 추이</h3>
+      <div class="chart-box"><canvas id="chart-history"></canvas></div>
+      <p id="chart-history-empty" class="empty" hidden>아직 쌓인 기록이 하루치뿐이라 추이를 그리지 못했습니다. 내일부터 선이 그려집니다.</p>
     </div>
-    <div id="runs-list" class="run-list"></div>
-    <p id="runs-empty" class="empty" hidden>실행 이력을 불러오지 못했습니다.</p>
-  </section>
+  </details>
+
+  <!-- ───────────────── 8. 접이식: 매매 원칙 ───────────────── -->
+  <details id="box-rules" class="card data-card fold-card">
+    <summary>📌 매매 원칙 <span class="fold-hint">한도·허용오차·목표 비중</span></summary>
+    <div class="fold-body">
+      <div id="rules-grid" class="rules-grid"></div>
+      <div id="rules-targets" class="target-chips"></div>
+    </div>
+  </details>
+
+  <!-- ───────────────── 9. 접이식: 실행 제어 ───────────────── -->
+  <details id="box-control" class="card data-card fold-card">
+    <summary>⚙️ 자동매매 실행 · 일시중지 <span class="fold-hint">버튼은 여기에</span></summary>
+    <div class="fold-body">
+      <div id="status-badges" class="badges">
+        <span id="badge-mode" class="pill pill-soft">-</span>
+        <span id="badge-dry" class="pill pill-soft">-</span>
+        <span id="badge-kill" class="pill pill-soft">-</span>
+      </div>
+      <div class="money-grid">
+        <div class="money">
+          <div class="money-label">총평가금액</div>
+          <div id="val-total" class="money-value">-</div>
+        </div>
+        <div class="money">
+          <div class="money-label">쓸 수 있는 현금</div>
+          <div id="val-cash" class="money-value">-</div>
+        </div>
+        <div class="money">
+          <div class="money-label">ETF 평가금액</div>
+          <div id="val-etf" class="money-value">-</div>
+        </div>
+      </div>
+      <div class="btn-row btn-row-stack">
+        <button id="btn-run" class="btn btn-primary btn-big" type="button">▶ 지금 1회 실행</button>
+        <button id="btn-kill" class="btn btn-danger btn-big" type="button">⏸ 자동매매 일시중지</button>
+      </div>
+      <p id="control-hint" class="hint"></p>
+    </div>
+  </details>
+
+  <!-- ───────────────── 10. 접이식: 실행 이력 ───────────────── -->
+  <details id="box-runs" class="card data-card fold-card">
+    <summary>🕒 최근 실행 5건 <span class="fold-hint">GitHub Actions 기록</span></summary>
+    <div class="fold-body">
+      <div id="runs-list" class="run-list"></div>
+      <p id="runs-empty" class="empty" hidden>실행 이력을 불러오지 못했습니다.</p>
+      <p class="hint"><a id="runs-link" class="small-link" href="https://github.com/jimkdy531-jimi/kis-etf-rebalancer/actions" target="_blank" rel="noopener">GitHub에서 전체 실행 보기</a></p>
+    </div>
+  </details>
 
   <footer class="foot">
     <p>이 화면은 <strong>읽기 + 실행 요청</strong>만 합니다. 매매 주문은 GitHub Actions에서 프로그램이 냅니다.</p>
@@ -207,6 +234,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-<script src="app.js?v=5" defer></script>
+<script src="app.js?v=6" defer></script>
 </body>
 </html>
