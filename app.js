@@ -664,6 +664,33 @@
         '</div>' +
       '</div>';
     }).join('');
+    var paperEl = $('bithumb-paper');
+    if (paperEl) {
+      var p = b.paper;
+      if (!p) {
+        paperEl.hidden = true;
+        paperEl.innerHTML = '';
+      } else {
+        paperEl.hidden = false;
+        var pRet = Number(p.return_pct || 0);
+        var pRetCls = pRet > 0 ? 'pos' : (pRet < 0 ? 'neg' : '');
+        var pRetText = (pRet > 0 ? '+' : '') + pRet.toFixed(2) + '%';
+        var heldText = (Array.isArray(p.held_coins) && p.held_coins.length)
+          ? p.held_coins.join(', ') + ' 보유 중'
+          : '전액 현금 대피 (20일선 아래)';
+        paperEl.innerHTML = '<div class="pocket-item">' +
+          '<div class="pocket-head">' +
+            '<div>' +
+              '<div class="pocket-name">🤖 코인 페이퍼 트레이딩 (가상 1,000만 원)</div>' +
+              '<div class="pocket-cycle">' + escapeHtml(p.strategy || '20일선 추세추종') + ' · ' + escapeHtml(p.updated_at || '-') + '</div>' +
+            '</div>' +
+            '<div class="pocket-ret ' + pRetCls + '">' + escapeHtml(pRetText) + '</div>' +
+          '</div>' +
+          '<div class="pocket-eval">평가 <strong>' + escapeHtml(fmtWon(p.total_eval)) + '</strong> · 현금 ' + escapeHtml(fmtWon(p.cash)) + '</div>' +
+          '<div class="pocket-hold">상태: ' + escapeHtml(heldText) + '</div>' +
+        '</div>';
+      }
+    }
   }
 
   function renderHoldings() {
