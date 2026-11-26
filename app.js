@@ -1187,9 +1187,9 @@
         { label: '실행 시간', value: rules.trading_window || '-', small: true },
         { label: '자동 점검', value: '평일 09:20', small: true }
       ];
-      noteText = '포켓 ' + count + '개가 ' + fmtWon(cap) + '씩 따로 돕니다. 그래서 한도도 포켓 하나 기준이에요. ' +
+      noteText = '포켓 ' + count + '개를 ' + fmtWonShort(cap) + ' 원씩 따로 굴립니다. 그래서 한도도 포켓 하나 기준이에요. ' +
         '여러 포켓이 같은 종목을 사면 주문은 증권사로 한 건에 합쳐 나가므로(포켓별 금액은 각각 ' +
-        fmtWon(perTrade) + ' 이내), 계좌에는 그보다 큰 주문 한 건으로 찍힐 수 있습니다.';
+        fmtWonShort(perTrade) + ' 원 이내), 계좌에는 그보다 큰 주문 한 건으로 찍힐 수 있습니다.';
     } else {
       items = [
         { label: '1회 주문 상한', value: fmtWon(rules.max_order_krw_per_trade) },
