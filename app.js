@@ -293,6 +293,7 @@
     if (/국고채\s*3?년?\s*대피/.test(r) && notes.join(' ').indexOf('피신') === -1) add('안전한 국고채3년으로 피신 중');
     if (/비중 이탈/.test(r)) add('목표 비중에서 3%p 넘게 벗어나 다시 맞추는 중');
     if (/(선택|1등)/.test(r) && !/대피/.test(r)) add('요즘 가장 강한 종목을 골라 담은 상태');
+    if (/(목표 비중|비중).{0,12}유지/.test(r) && notes.length === 0) add('목표 비중을 그대로 지키고 있음');
     var next = r.match(/다음 교체\s*(\d+)\s*거래일 후/);
     if (next) add('다음 교체까지 ' + next[1] + '거래일 남음');
     return notes.join(' · ');
@@ -520,6 +521,7 @@
     loading: false,
     demo: false,
     live: false,
+    connectMode: null,
     charts: {}
   };
 
@@ -613,6 +615,7 @@
     state.cachedAt = null;
     state.live = false;
     document.body.classList.remove('is-locked');
+    applyConnectCard('demo');
     renderScoreboard();
     renderSummary();
     renderPockets();
@@ -640,6 +643,26 @@
   function $(id) { return document.getElementById(id); }
   function show(el, visible) { if (el) el.hidden = !visible; }
   function setText(id, text) { var el = $(id); if (el) el.textContent = text; }
+
+  /** 연결 설정 카드: 연결된 뒤에는 접어 두고, 연결 전에는 펼쳐 둔다 (사용자가 직접 열고 닫은 건 건드리지 않음) */
+  function applyConnectCard(mode) {
+    var card = $('connect-card');
+    var summary = $('connect-summary');
+    if (summary) {
+      if (mode === 'connected') {
+        summary.textContent = '🔑 연결 설정 · 토큰 ' + maskToken(getToken()) + ' (연결됨)';
+      } else if (mode === 'demo') {
+        summary.textContent = '🔑 연결 설정 (데모 화면) · 토큰을 넣으면 실제 계좌가 보입니다';
+      } else {
+        summary.textContent = '🔑 휴대폰 연결 설정 (토큰 필요)';
+      }
+    }
+    if (!card) return;
+    if (state.connectMode !== mode) {
+      state.connectMode = mode;
+      card.open = (mode === 'locked');
+    }
+  }
 
   function notice(kind, message, actionLabelText, action) {
     var el = $('notice');
@@ -716,6 +739,7 @@
 
   function renderLocked() {
     document.body.classList.add('is-locked');
+    applyConnectCard('locked');
     var hint = $('connect-hint');
     if (hint) {
       hint.className = 'hint';
@@ -728,6 +752,7 @@
     var s = state.status;
     if (!s) return;
     document.body.classList.remove('is-locked');
+    if (!state.demo) applyConnectCard('connected');
 
     var modeBadge = $('badge-mode');
     if (modeBadge) {
@@ -828,7 +853,6 @@
         baseLabel: '원금 ' + fmtWon(etf.base) + ' 대비',
         line: etf.line,
         extra: '<div id="status-badges" class="badges">' +
-                 '<span id="badge-mode" class="pill pill-soft">-</span>' +
                  '<span id="badge-dry" class="pill pill-soft">-</span>' +
                  '<span id="badge-kill" class="pill pill-soft">-</span>' +
                '</div>'
@@ -1346,6 +1370,7 @@
         } else {
           state.status = null;
           document.body.classList.add('is-locked');
+          applyConnectCard('locked');
           setConnectionBadge();
         }
         var hint = $('connect-hint');

@@ -166,6 +166,26 @@ body.is-locked .data-card { display: none; }
 .field:focus { outline: none; border-color: var(--primary); background: #fff; }
 
 /* ── 접이식 안내 ───────────────────────────────────────── */
+.connect-card { padding: 0; }
+.connect-card > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.connect-card > summary::-webkit-details-marker { display: none; }
+.connect-card > summary::after { content: "▾"; font-size: 18px; color: var(--muted); }
+.connect-card[open] > summary::after { content: "▴"; }
+.connect-card[open] > summary { border-bottom: 1px solid var(--line); }
+.connect-body { padding: 14px 16px 18px 16px; }
+
 .guide {
   margin: 0 0 16px 0;
   border: 1px solid var(--line);
