@@ -253,7 +253,7 @@
   }
 
   function fetchStatus() {
-    return gh('/repos/' + OWNER + '/' + REPO + '/contents/data/status.json?ref=' + BRANCH)
+    return gh('/repos/' + OWNER + '/' + REPO + '/contents/data/status.json?ref=' + BRANCH + '&_t=' + Date.now())
       .then(function (res) {
         if (res.status === 404) return { status: null, notFound: true };
         if (!res.ok) throw new ApiError(res.status);
@@ -266,7 +266,7 @@
   }
 
   function fetchBithumb() {
-    return gh('/repos/' + OWNER + '/' + REPO + '/contents/data/bithumb.json?ref=' + BRANCH)
+    return gh('/repos/' + OWNER + '/' + REPO + '/contents/data/bithumb.json?ref=' + BRANCH + '&_t=' + Date.now())
       .then(function (res) {
         if (!res.ok) return null;
         return res.json().then(function (json) {
@@ -1066,7 +1066,15 @@
     if (!('serviceWorker' in navigator)) return;
     if (window.location.protocol !== 'https:') return;
     try {
-      navigator.serviceWorker.register('sw.js')['catch'](function () { /* 등록 실패해도 앱은 동작 */ });
+      var reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      });
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        if (reg && reg.update) reg.update();
+      })['catch'](function () { /* 등록 실패해도 앱은 동작 */ });
     } catch (e) { /* ignore */ }
   }
 
