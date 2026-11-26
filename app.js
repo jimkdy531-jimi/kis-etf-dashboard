@@ -551,10 +551,26 @@
     ],
     rules: {
       tolerance_pct: 3,
-      max_order_krw_per_trade: 100000,
-      max_daily_order_krw: 300000,
+      max_order_krw_per_trade: 3500000,
+      max_daily_order_krw: 12000000,
       allow_sell: true,
       trading_window: '09:20~15:00',
+      portfolio_mode: '3pocket',
+      limit_scope: 'pocket',
+      pockets: {
+        portfolio_mode: '3pocket',
+        count: 3,
+        capital_krw: 3000000,
+        total_capital_krw: 9000000,
+        max_order_krw: 3500000,
+        max_daily_krw: 12000000,
+        scope: 'pocket',
+        capped_orders: 0,
+        planned_buy_krw: 231810,
+        planned_sell_krw: 0,
+        daily_limit_ok: true
+      },
+      single_portfolio: { max_order_krw_per_trade: 100000, max_daily_order_krw: 300000 },
       targets: [
         { code: '069500', name: 'KODEX 200', target_pct: 40 },
         { code: '360750', name: 'TIGER 미국S&P500', target_pct: 40 },
@@ -1145,16 +1161,46 @@
   function renderRules() {
     var grid = $('rules-grid');
     var chips = $('rules-targets');
+    var note = $('rules-note');
     if (!grid) return;
     var rules = (state.status && state.status.rules) || {};
-    var items = [
-      { label: '1회 주문 상한', value: fmtWon(rules.max_order_krw_per_trade) },
-      { label: '1일 주문 한도', value: fmtWon(rules.max_daily_order_krw) },
-      { label: '허용 오차', value: '±' + toNumber(rules.tolerance_pct) + '%' },
-      { label: '매도 허용', value: rules.allow_sell ? '허용' : '안 함' },
-      { label: '실행 시간', value: rules.trading_window || '-', small: true },
-      { label: '자동 점검', value: '평일 09:20', small: true }
-    ];
+    var pk = rules.pockets || {};
+    var pocketList = (state.status && state.status.pockets) || [];
+    var isPockets = rules.portfolio_mode === '3pocket' || !!toNumber(pk.count);
+    var items = [];
+    var noteText = '';
+
+    if (isPockets) {
+      // 지금 실제로 도는 3포켓 기준: 한도는 '계좌 전체'가 아니라 '포켓 하나' 기준이다.
+      var cap = toNumber(pk.capital_krw) || 3000000;
+      var count = toNumber(pk.count) || 3;
+      var total = toNumber(pk.total_capital_krw) || cap * count;
+      var perTrade = toNumber(pk.max_order_krw) || toNumber(rules.max_order_krw_per_trade) || 3500000;
+      var daily = toNumber(pk.max_daily_krw) || toNumber(rules.max_daily_order_krw) || 12000000;
+      items = [
+        { label: '포켓 1개 원금', value: fmtWon(cap) },
+        { label: '3포켓 합계 원금', value: fmtWon(total) },
+        { label: '포켓당 1회 상한', value: fmtWon(perTrade) },
+        { label: '포켓당 하루 한도', value: fmtWon(daily) },
+        { label: '허용 오차', value: '±' + toNumber(rules.tolerance_pct) + '%' },
+        { label: '매도 허용', value: rules.allow_sell ? '허용' : '안 함' },
+        { label: '실행 시간', value: rules.trading_window || '-', small: true },
+        { label: '자동 점검', value: '평일 09:20', small: true }
+      ];
+      noteText = '포켓 ' + count + '개가 ' + fmtWon(cap) + '씩 따로 돕니다. 그래서 한도도 포켓 하나 기준이에요. ' +
+        '여러 포켓이 같은 종목을 사면 주문은 증권사로 한 건에 합쳐 나가므로(포켓별 금액은 각각 ' +
+        fmtWon(perTrade) + ' 이내), 계좌에는 그보다 큰 주문 한 건으로 찍힐 수 있습니다.';
+    } else {
+      items = [
+        { label: '1회 주문 상한', value: fmtWon(rules.max_order_krw_per_trade) },
+        { label: '1일 주문 한도', value: fmtWon(rules.max_daily_order_krw) },
+        { label: '허용 오차', value: '±' + toNumber(rules.tolerance_pct) + '%' },
+        { label: '매도 허용', value: rules.allow_sell ? '허용' : '안 함' },
+        { label: '실행 시간', value: rules.trading_window || '-', small: true },
+        { label: '자동 점검', value: '평일 09:20', small: true }
+      ];
+    }
+
     grid.innerHTML = items.map(function (it) {
       return '<div class="rule">' +
         '<div class="rule-label">' + escapeHtml(it.label) + '</div>' +
@@ -1162,12 +1208,27 @@
         '</div>';
     }).join('');
 
+    if (note) {
+      note.textContent = noteText;
+      show(note, !!noteText);
+    }
+
     if (chips) {
-      var targets = rules.targets || [];
-      chips.innerHTML = targets.map(function (t) {
-        return '<span class="pill pill-soft">' + escapeHtml(t.name || t.code) + ' ' + fmtPct(t.target_pct, 0) + '</span>';
+      var chipTexts = [];
+      if (isPockets && pocketList.length) {
+        chipTexts = pocketList.map(function (p) {
+          var title = pocketLabel(p.name).title;
+          return title + (p.cycle ? ' · ' + p.cycle : '');
+        });
+      } else {
+        chipTexts = (rules.targets || []).map(function (t) {
+          return String(t.name || t.code) + ' ' + fmtPct(t.target_pct, 0);
+        });
+      }
+      chips.innerHTML = chipTexts.map(function (text) {
+        return '<span class="pill pill-soft">' + escapeHtml(text) + '</span>';
       }).join('');
-      show(chips, targets.length > 0);
+      show(chips, chipTexts.length > 0);
     }
   }
 
