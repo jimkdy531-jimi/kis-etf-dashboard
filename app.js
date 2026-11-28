@@ -528,6 +528,7 @@
     demo: false,
     live: false,
     liveIssue: null,
+    liveStale: false,
     connectMode: null,
     charts: {}
   };
@@ -637,8 +638,12 @@
     state.varsReadable = true;
     state.cachedAt = null;
     state.live = false;
+    state.liveStale = false;
+    state.liveIssue = null;
     document.body.classList.remove('is-locked');
     applyConnectCard('demo');
+    renderServerBanner();
+    renderCash();
     renderScoreboard();
     renderSummary();
     renderPockets();
@@ -1027,7 +1032,9 @@
       var basis = (s && s.basis) ? s.basis : null;
       var basisText = basis && basis.price_date ? (' · ' + basis.price_date + ' 종가 기준') : '';
       note.textContent = state.live
-        ? '서울 서버에서 방금 받은 실시간 값입니다.'
+        ? (state.liveStale
+            ? '서울 서버가 마지막으로 정상 확인한 값입니다. (지금은 한투 모의서버 실시간 조회가 되지 않습니다)'
+            : '서울 서버에서 방금 받은 실시간 값입니다.')
         : '마지막 실행 때 저장된 값입니다' + basisText + '. (서울 실시간 서버에 연결되지 않아 조금 늦을 수 있습니다)';
     }
   }
@@ -1528,6 +1535,7 @@
       var runs = results[2];
       var varResult = results[3];
       state.live = !!(liveData && liveData.status);
+      state.liveStale = !!(liveData && liveData.status && liveData.kis && liveData.kis.ok === false);
       state.liveIssue = buildLiveIssue(liveRes, liveData,
         (statusResult && statusResult.status) ? statusResult.status.updated_at : null);
       state.bithumb = (liveData && liveData.bithumb) ? liveData.bithumb : (results[4] || state.bithumb);
