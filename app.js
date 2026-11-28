@@ -21,7 +21,8 @@
   var TOKEN_KEY = 'kis_etf_pat_v1';
   var CACHE_KEY = 'kis_etf_cache_v1';
   var AUTO_REFRESH_MS = 60 * 1000;
-  var LIVE_TIMEOUT_MS = 8000;
+  // 실시간 서버 응답을 기다리는 시간. 테스트에서만 window.__KIS_LIVE_TIMEOUT_MS 로 줄인다.
+  var LIVE_TIMEOUT_MS = (typeof window !== 'undefined' && Number(window.__KIS_LIVE_TIMEOUT_MS)) || 8000;
   var ETF_PRINCIPAL_KRW = 10000000;  // 한투 모의투자 시작 원금(1,000만 원)
 
   // ===========================================================================
@@ -432,9 +433,10 @@
 
   function fetchLive() {
     var token = getToken();
-    if (!token || !LIVE_API_URL) return Promise.resolve(null);
+    if (!token || !LIVE_API_URL) return Promise.resolve({ ok: false, reason: 'disabled' });
     var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, LIVE_TIMEOUT_MS) : null;
+    var timedOut = false;
+    var timer = controller ? setTimeout(function () { timedOut = true; controller.abort(); }, LIVE_TIMEOUT_MS) : null;
     return fetch(LIVE_API_URL + '?_t=' + Date.now(), {
       method: 'GET',
       headers: { 'Authorization': 'Bearer ' + token },
@@ -442,11 +444,15 @@
       signal: controller ? controller.signal : undefined
     }).then(function (res) {
       if (timer) clearTimeout(timer);
-      if (!res.ok) return null;
-      return res.json();
+      if (!res.ok) return { ok: false, reason: 'http', httpStatus: res.status };
+      return res.json().then(function (json) {
+        return { ok: true, data: json || {} };
+      }, function () {
+        return { ok: false, reason: 'badjson' };
+      });
     }).catch(function () {
       if (timer) clearTimeout(timer);
-      return null;
+      return { ok: false, reason: timedOut ? 'timeout' : 'network' };
     });
   }
 
@@ -521,6 +527,7 @@
     loading: false,
     demo: false,
     live: false,
+    liveIssue: null,
     connectMode: null,
     charts: {}
   };
@@ -660,6 +667,106 @@
   function show(el, visible) { if (el) el.hidden = !visible; }
   function setText(id, text) { var el = $(id); if (el) el.textContent = text; }
 
+  /** "2026-11-27 09:22:13 KST" -> "11/27 09:22" (못 읽으면 빈 글자) */
+  function mmddhhmm(value) {
+    var m = String(value == null ? '' : value).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return '';
+    return m[2] + '/' + m[3] + ' ' + m[4] + ':' + m[5];
+  }
+
+  /**
+   * 실시간 서버·한투 모의서버 상태를 화면 맨 위 배너 문구로 바꾼다.
+   * 문제가 없으면 null(배너 숨김).
+   */
+  function buildLiveIssue(liveRes, liveData, savedAt) {
+    if (!liveRes || liveRes.reason === 'disabled') return null;
+    var saved = mmddhhmm(savedAt) || mmddhhmm(state.status && state.status.updated_at);
+
+    if (!liveRes.ok) {
+      var secs = Math.round(LIVE_TIMEOUT_MS / 1000);
+      if (liveRes.reason === 'timeout') {
+        return {
+          level: 'warn',
+          title: '서울 서버 응답이 ' + secs + '초 안에 오지 않았습니다',
+          detail: '한투 모의서버 점검 시간이거나 네트워크가 약할 수 있습니다. 아래 숫자는 마지막 저장본입니다.',
+          saved: saved
+        };
+      }
+      if (liveRes.reason === 'http') {
+        return {
+          level: 'warn',
+          title: '서울 서버에 연결하지 못했습니다 (HTTP ' + escapeHtml(String(liveRes.httpStatus)) + ')',
+          detail: '아래 숫자는 마지막 저장본입니다. 잠시 뒤 새로고침(↻)해 보세요.',
+          saved: saved
+        };
+      }
+      if (liveRes.reason === 'badjson') {
+        return {
+          level: 'warn',
+          title: '서울 서버 응답을 읽지 못했습니다',
+          detail: '아래 숫자는 마지막 저장본입니다.',
+          saved: saved
+        };
+      }
+      return {
+        level: 'warn',
+        title: '서울 서버에 연결하지 못했습니다',
+        detail: '인터넷이 약하거나 서버에 닿지 못했습니다. 아래 숫자는 마지막 저장본입니다.',
+        saved: saved
+      };
+    }
+
+    var kis = liveData && liveData.kis;
+    if (kis && kis.ok === false) {
+      var why = kis.error ? String(kis.error) : '한투 잔고를 읽지 못했습니다';
+      var hasCached = !!(liveData && liveData.status);
+      return {
+        level: hasCached ? 'warn' : 'bad',
+        title: '한투 모의서버 점검·응답 지연',
+        detail: why + (hasCached
+          ? ' · 서버가 마지막으로 정상 확인한 잔고·평단을 보여 줍니다.'
+          : ' · 아래 숫자는 저장본(마지막 실행 기준)입니다.'),
+        saved: mmddhhmm(kis.last_good_at) || saved
+      };
+    }
+    return null;
+  }
+
+  /** 맨 위 서버 상태 배너 */
+  function renderServerBanner() {
+    var el = $('server-banner');
+    if (!el) return;
+    var issue = state.liveIssue;
+    if (!issue || state.demo) { el.hidden = true; el.innerHTML = ''; return; }
+    var icon = issue.level === 'bad' ? '⛔' : '⚠️';
+    el.className = 'server-banner ' + (issue.level || 'warn');
+    el.innerHTML = '<div class="banner-row">' +
+        '<span class="banner-icon">' + icon + '</span>' +
+        '<span class="banner-title">' + escapeHtml(issue.title) + '</span>' +
+      '</div>' +
+      (issue.detail ? '<div class="banner-detail">' + escapeHtml(issue.detail) + '</div>' : '') +
+      (issue.saved ? '<div class="banner-time">마지막 정상 기준 ' + escapeHtml(issue.saved) + '</div>' : '');
+    el.hidden = false;
+  }
+
+  /** 남은 매수 가능 자금(현금) — 한투 모의투자 계좌 기준 */
+  function renderCash() {
+    var value = $('cash-value');
+    var sub = $('cash-sub');
+    if (!value) return;
+    var acct = state.status && state.status.account;
+    if (!acct) {
+      value.textContent = '-';
+      if (sub) sub.textContent = '';
+      return;
+    }
+    value.textContent = fmtWon(acct.cash_krw);
+    var parts = [];
+    if (acct.total_eval_krw != null) parts.push('총평가 ' + fmtWon(acct.total_eval_krw));
+    if (acct.etf_eval_krw != null) parts.push('ETF ' + fmtWon(acct.etf_eval_krw));
+    if (sub) sub.textContent = parts.join(' · ');
+  }
+
   /** 연결 설정 카드: 연결된 뒤에는 접어 두고, 연결 전에는 펼쳐 둔다 (사용자가 직접 열고 닫은 건 건드리지 않음) */
   function applyConnectCard(mode) {
     var card = $('connect-card');
@@ -756,6 +863,8 @@
   function renderLocked() {
     document.body.classList.add('is-locked');
     applyConnectCard('locked');
+    state.liveIssue = null;
+    renderServerBanner();
     var hint = $('connect-hint');
     if (hint) {
       hint.className = 'hint';
@@ -915,9 +1024,11 @@
     var note = $('score-note');
     if (note) {
       note.className = 'hint';
+      var basis = (s && s.basis) ? s.basis : null;
+      var basisText = basis && basis.price_date ? (' · ' + basis.price_date + ' 종가 기준') : '';
       note.textContent = state.live
         ? '서울 서버에서 방금 받은 실시간 값입니다.'
-        : '마지막 실행 때 저장된 값입니다. (서울 실시간 서버에 연결되지 않아 조금 늦을 수 있습니다)';
+        : '마지막 실행 때 저장된 값입니다' + basisText + '. (서울 실시간 서버에 연결되지 않아 조금 늦을 수 있습니다)';
     }
   }
 
@@ -1367,12 +1478,15 @@
     if (!state.status) {
       document.body.classList.add('is-locked');
       setConnectionBadge();
+      renderServerBanner();
       notice('warn', '아직 실행 기록(data/status.json)이 없습니다. 자동매매가 한 번 실행되면 여기에 나타납니다.');
       return;
     }
     notice(state.cachedAt ? 'warn' : '', state.cachedAt
       ? '최근 저장본을 보여 주고 있습니다 (' + kstDateTime(new Date(state.cachedAt).toISOString()) + ' 기준).'
       : '');
+    renderServerBanner();
+    renderCash();
     renderScoreboard();
     renderSummary();
     renderPockets();
@@ -1408,11 +1522,14 @@
       fetchVariables().catch(function () { return { vars: {}, readable: false }; }),
       fetchBithumb()
     ]).then(function (results) {
-      var liveData = results[0];
+      var liveRes = results[0] || { ok: false, reason: 'disabled' };
+      var liveData = liveRes.ok ? liveRes.data : null;
       var statusResult = (liveData && liveData.status) ? { status: liveData.status } : results[1];
       var runs = results[2];
       var varResult = results[3];
       state.live = !!(liveData && liveData.status);
+      state.liveIssue = buildLiveIssue(liveRes, liveData,
+        (statusResult && statusResult.status) ? statusResult.status.updated_at : null);
       state.bithumb = (liveData && liveData.bithumb) ? liveData.bithumb : (results[4] || state.bithumb);
 
       state.runs = runs;
@@ -1669,6 +1786,8 @@
     killSwitchValue: killSwitchValue,
     buildWeightChartData: buildWeightChartData,
     buildHistoryChartData: buildHistoryChartData,
+    mmddhhmm: mmddhhmm,
+    buildLiveIssue: buildLiveIssue,
     apiErrorText: apiErrorText,
     refresh: refresh,
     state: state

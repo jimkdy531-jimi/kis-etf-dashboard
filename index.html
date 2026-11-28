@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="styles.css?v=8">
+<link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body class="is-locked">
 
@@ -30,6 +30,9 @@
 
   <!-- 안내 배너 (오류·오프라인·안내) -->
   <div id="notice" class="notice" hidden></div>
+
+  <!-- 서버 점검·연결 문제 배너 (실시간 서버·한투 모의서버 상태) -->
+  <div id="server-banner" class="server-banner" hidden></div>
 
   <!-- ───────────────── 연결 설정 (연결되면 접힘) ───────────────── -->
   <details id="connect-card" class="card connect-card" open>
@@ -80,6 +83,15 @@
     <div class="card-head">
       <h2 class="card-title">📊 한눈에 보는 전체 성적표</h2>
       <span id="updated-at" class="stamp">-</span>
+    </div>
+    <!-- 남은 매수 가능 자금(현금) — 한투 모의투자 계좌 기준 -->
+    <div id="cash-strip" class="cash-strip">
+      <div class="cash-head">
+        <span class="cash-label">남은 매수 가능 자금(현금)</span>
+        <span class="cash-tag">한투 모의투자 · 익일정산 기준</span>
+      </div>
+      <div id="cash-value" class="cash-value">-</div>
+      <div id="cash-sub" class="cash-sub"></div>
     </div>
     <div id="score-list" class="score-list"></div>
     <p id="score-note" class="hint"></p>
@@ -185,7 +197,7 @@
           <div id="val-total" class="money-value">-</div>
         </div>
         <div class="money">
-          <div class="money-label">쓸 수 있는 현금</div>
+          <div class="money-label">남은 매수 가능 자금</div>
           <div id="val-cash" class="money-value">-</div>
         </div>
         <div class="money">
@@ -232,6 +244,6 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-<script src="app.js?v=9" defer></script>
+<script src="app.js?v=10" defer></script>
 </body>
 </html>
